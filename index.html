@@ -18,7 +18,7 @@
     user-select: none;
   }
   h1 { font-size: 1.6rem; margin: 8px 0 4px; letter-spacing: 1px; }
-  .subtitle { color: #9fb3d1; font-size: 0.9rem; margin-bottom: 12px; }
+  .subtitle { color: #9fb3d1; font-size: 0.9rem; margin-bottom: 12px; text-align: center; }
   .hud {
     display: flex;
     gap: 12px;
@@ -49,6 +49,38 @@
   }
   #question { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
   #potential { font-size: 0.85rem; color: #ffd166; height: 1.2em; font-variant-numeric: tabular-nums; }
+  #answer-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    justify-content: center;
+  }
+  #answer-row.hidden { display: none; }
+  #answer-input {
+    width: 120px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 8px;
+    border-radius: 10px;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    outline: none;
+    font-variant-numeric: tabular-nums;
+  }
+  #answer-input:focus { border-color: #6ee7ff; }
+  #answer-btn {
+    background: linear-gradient(135deg, #6ee7ff, #4aa8ff);
+    border: none;
+    color: #0f2440;
+    font-size: 1.05rem;
+    font-weight: 800;
+    padding: 8px 22px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  #answer-btn:hover { transform: scale(1.05); }
   #board {
     display: grid;
     grid-template-columns: repeat(11, minmax(0, 1fr));
@@ -76,9 +108,15 @@
     font-variant-numeric: tabular-nums;
   }
   .cell:hover:not(.filled) { background: rgba(110,231,255,0.35); transform: scale(1.06); }
+  .cell.selected {
+    background: rgba(255,209,102,0.5);
+    box-shadow: 0 0 0 2px #ffd166;
+    transform: scale(1.08);
+  }
   .cell.filled { background: rgba(142,240,164,0.25); cursor: default; color: #8ef0a4; }
   .cell.correct-flash { background: #2ecc71 !important; color: #fff; transform: scale(1.12); }
   .cell.wrong-flash { background: #e74c3c !important; animation: shake 0.25s; }
+  #answer-input.wrong-flash { border-color: #e74c3c; animation: shake 0.25s; }
   @keyframes shake {
     0%, 100% { transform: translateX(0); }
     25% { transform: translateX(-4px); }
@@ -101,7 +139,7 @@
     border-radius: 16px;
     padding: 28px 32px;
     text-align: center;
-    max-width: 420px;
+    max-width: 440px;
     width: 100%;
   }
   .panel h2 { font-size: 1.5rem; margin-bottom: 10px; }
@@ -110,18 +148,21 @@
   .panel .stat { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.95rem; }
   .panel .stat span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
   button.start {
+    display: block;
+    width: 100%;
     background: linear-gradient(135deg, #ffd166, #f4a261);
     border: none;
     color: #1a1a2e;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 800;
-    padding: 12px 32px;
+    padding: 12px 24px;
     border-radius: 12px;
     cursor: pointer;
     margin-top: 8px;
     transition: transform 0.1s;
   }
-  button.start:hover { transform: scale(1.05); }
+  button.start.alt { background: linear-gradient(135deg, #6ee7ff, #4aa8ff); color: #0f2440; }
+  button.start:hover { transform: scale(1.03); }
 </style>
 </head>
 <body>
@@ -139,15 +180,21 @@
     <div id="potential"></div>
   </div>
 
+  <div id="answer-row" class="hidden">
+    <input id="answer-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="?" autocomplete="off">
+    <button id="answer-btn">Svar ✔</button>
+  </div>
+
   <div id="board"></div>
 
   <div class="overlay" id="start-screen">
     <div class="panel">
       <h2>🧮 Gangetabell-spillet</h2>
-      <p>Et tilfeldig gangestykke vises øverst, f.eks. <b>6 × 7 = ?</b>. Klikk riktig rute i tabellen (6×7 eller 7×6 gjelder begge).</p>
-      <p>Du får <b>maks 100 poeng</b> per riktig svar — og poengene synker med <b>10 poeng per sekund</b> (minimum 10). Jo raskere, jo mer poeng. Tiden løper hele tiden!</p>
-      <p>Fyll alle <b>100 rutene</b> så fort du klarer.</p>
-      <button class="start" id="start-btn">Start spill ▶</button>
+      <p><b>🖱️ Klikk-modus:</b> et gangestykke vises øverst (f.eks. <b>6 × 7 = ?</b>) — klikk riktig rute i tabellen.</p>
+      <p><b>⌨️ Skrivemodus:</b> velg fritt hvilken rute du vil ta fra hele brettet, i den rekkefølgen du vil, og skriv inn svaret selv.</p>
+      <p>Poeng gis <b>kun på tid</b>: maks 100 poeng per riktig svar, minus 10 poeng per sekund (minimum 10). Fyll alle <b>100 rutene</b> så fort du klarer!</p>
+      <button class="start" id="start-click-btn">🖱️ Spill: klikk på rute</button>
+      <button class="start alt" id="start-type-btn">⌨️ Spill: skriv svaret</button>
     </div>
   </div>
 
@@ -173,10 +220,14 @@
   var progressEl = document.querySelector('#progress .value');
   var startScreen = document.getElementById('start-screen');
   var endScreen = document.getElementById('end-screen');
+  var answerRow = document.getElementById('answer-row');
+  var answerInput = document.getElementById('answer-input');
 
   var filled = [];
   var cells = [];
   var current = null;
+  var selected = null;
+  var mode = 'click';
   var score = 0;
   var answered = 0;
   var playing = false;
@@ -184,6 +235,35 @@
   var gameStart = 0;
   var interval = null;
   var BEST_KEY = 'gangetabell_best_score';
+
+  var audioCtx = null;
+  function ac() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function tone(freq, dur, type, delay, vol) {
+    var ctx = ac();
+    var o = ctx.createOscillator();
+    var g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    var t = ctx.currentTime + delay;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+  function playSelect() { tone(520, 0.06, 'triangle', 0, 0.12); }
+  function playCorrect() { tone(660, 0.09, 'sine', 0, 0.2); tone(990, 0.15, 'sine', 0.09, 0.2); }
+  function playWrong() { tone(200, 0.18, 'sawtooth', 0, 0.12); tone(150, 0.24, 'sawtooth', 0.12, 0.12); }
+  function playWin() {
+    var notes = [523, 659, 784, 1047, 1319];
+    for (var i = 0; i < notes.length; i++) tone(notes[i], 0.18, 'sine', i * 0.12, 0.2);
+  }
 
   function buildBoard() {
     board.innerHTML = '';
@@ -225,6 +305,13 @@
   }
 
   function newQuestion() {
+    if (mode === 'type') {
+      selected = null;
+      current = null;
+      questionEl.textContent = 'Velg en rute i tabellen 👆';
+      potentialEl.textContent = '';
+      return;
+    }
     var empty = [];
     for (var r = 0; r < SIZE; r++)
       for (var c = 0; c < SIZE; c++)
@@ -242,6 +329,26 @@
 
   function onCell(r, c, btn) {
     if (!playing || locked || filled[r - 1][c - 1]) return;
+    if (mode === 'type') {
+      if (selected && selected.r === r && selected.c === c) {
+        btn.classList.remove('selected');
+        selected = null;
+        current = null;
+        questionEl.textContent = 'Velg en rute i tabellen 👆';
+        potentialEl.textContent = '';
+        playSelect();
+        return;
+      }
+      if (selected) selected.btn.classList.remove('selected');
+      selected = { r: r, c: c, btn: btn, start: performance.now() };
+      btn.classList.add('selected');
+      current = { a: r, b: c, start: selected.start };
+      questionEl.textContent = r + ' × ' + c + ' = ?';
+      updatePotential();
+      playSelect();
+      answerInput.focus();
+      return;
+    }
     var isCorrect = (r === current.a && c === current.b) || (r === current.b && c === current.a);
     if (isCorrect) {
       var pts = pointsFor(current.start);
@@ -250,6 +357,7 @@
       btn.textContent = r * c;
       btn.classList.add('filled', 'correct-flash');
       setTimeout(function () { btn.classList.remove('correct-flash'); }, 350);
+      playCorrect();
       answered++;
       scoreEl.textContent = score;
       progressEl.textContent = answered + '/100';
@@ -258,10 +366,51 @@
     } else {
       locked = true;
       btn.classList.add('wrong-flash');
+      playWrong();
       setTimeout(function () {
         btn.classList.remove('wrong-flash');
         locked = false;
       }, 300);
+    }
+  }
+
+  function submitAnswer() {
+    if (!playing || mode !== 'type' || !selected || locked) return;
+    var val = parseInt(answerInput.value, 10);
+    if (isNaN(val)) {
+      answerInput.classList.add('wrong-flash');
+      setTimeout(function () { answerInput.classList.remove('wrong-flash'); }, 300);
+      return;
+    }
+    if (val === selected.r * selected.c) {
+      var pts = pointsFor(selected.start);
+      score += pts;
+      filled[selected.r - 1][selected.c - 1] = true;
+      var btn = selected.btn;
+      btn.textContent = selected.r * selected.c;
+      btn.classList.remove('selected');
+      btn.classList.add('filled', 'correct-flash');
+      setTimeout(function () { btn.classList.remove('correct-flash'); }, 350);
+      playCorrect();
+      answered++;
+      scoreEl.textContent = score;
+      progressEl.textContent = answered + '/100';
+      selected = null;
+      current = null;
+      answerInput.value = '';
+      if (answered === SIZE * SIZE) { endGame(); return; }
+      questionEl.textContent = 'Velg en rute i tabellen 👆';
+      potentialEl.textContent = '';
+    } else {
+      locked = true;
+      playWrong();
+      answerInput.classList.add('wrong-flash');
+      answerInput.value = '';
+      setTimeout(function () {
+        answerInput.classList.remove('wrong-flash');
+        locked = false;
+      }, 300);
+      answerInput.focus();
     }
   }
 
@@ -276,18 +425,23 @@
     updatePotential();
   }
 
-  function startGame() {
+  function startGame(newMode) {
+    mode = newMode;
     buildBoard();
     score = 0;
     answered = 0;
     current = null;
+    selected = null;
     locked = false;
     playing = true;
     scoreEl.textContent = '0';
     progressEl.textContent = '0/100';
     timerEl.textContent = '0.0s';
+    answerRow.classList.toggle('hidden', mode !== 'type');
+    answerInput.value = '';
     startScreen.classList.add('hidden');
     endScreen.classList.add('hidden');
+    ac();
     gameStart = performance.now();
     newQuestion();
     clearInterval(interval);
@@ -297,6 +451,7 @@
   function endGame() {
     playing = false;
     clearInterval(interval);
+    playWin();
     var totalMs = performance.now() - gameStart;
     timerEl.textContent = fmtTime(totalMs);
     var best = Number(localStorage.getItem(BEST_KEY) || 0);
@@ -311,8 +466,13 @@
     endScreen.classList.remove('hidden');
   }
 
-  document.getElementById('start-btn').addEventListener('click', startGame);
-  document.getElementById('restart-btn').addEventListener('click', startGame);
+  document.getElementById('start-click-btn').addEventListener('click', function () { startGame('click'); });
+  document.getElementById('start-type-btn').addEventListener('click', function () { startGame('type'); });
+  document.getElementById('restart-btn').addEventListener('click', function () { startGame(mode); });
+  document.getElementById('answer-btn').addEventListener('click', submitAnswer);
+  answerInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') submitAnswer();
+  });
 
   buildBoard();
 })();
