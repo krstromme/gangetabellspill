@@ -113,6 +113,7 @@
     box-shadow: 0 0 0 2px #ffd166;
     transform: scale(1.08);
   }
+  .cell.cursor { box-shadow: 0 0 0 2px #6ee7ff; }
   .cell.filled { background: rgba(142,240,164,0.25); cursor: default; color: #8ef0a4; }
   .cell.correct-flash { background: #2ecc71 !important; color: #fff; transform: scale(1.12); }
   .cell.wrong-flash { background: #e74c3c !important; animation: shake 0.25s; }
@@ -192,6 +193,7 @@
       <h2>🧮 Gangetabell-spillet</h2>
       <p><b>🖱️ Klikk-modus:</b> et gangestykke vises øverst (f.eks. <b>6 × 7 = ?</b>) — klikk riktig rute i tabellen.</p>
       <p><b>⌨️ Skrivemodus:</b> velg fritt hvilken rute du vil ta fra hele brettet, i den rekkefølgen du vil, og skriv inn svaret selv.</p>
+      <p>⌨️ Bruk <b>piltastene</b> til å flytte markøren i rutenettet og <b>Enter</b> for å velge rute / sende svar — raskeste vei til mange poeng!</p>
       <p>Poeng gis <b>kun på tid</b>: maks 100 poeng per riktig svar, minus 10 poeng per sekund (minimum 10). Fyll alle <b>100 rutene</b> så fort du klarer!</p>
       <button class="start" id="start-click-btn">🖱️ Spill: klikk på rute</button>
       <button class="start alt" id="start-type-btn">⌨️ Spill: skriv svaret</button>
@@ -227,6 +229,7 @@
   var cells = [];
   var current = null;
   var selected = null;
+  var cursor = { r: 1, c: 1 };
   var mode = 'click';
   var score = 0;
   var answered = 0;
@@ -258,6 +261,7 @@
     o.stop(t + dur + 0.05);
   }
   function playSelect() { tone(520, 0.06, 'triangle', 0, 0.12); }
+  function playTick() { tone(700, 0.03, 'triangle', 0, 0.05); }
   function playCorrect() { tone(660, 0.09, 'sine', 0, 0.2); tone(990, 0.15, 'sine', 0.09, 0.2); }
   function playWrong() { tone(200, 0.18, 'sawtooth', 0, 0.12); tone(150, 0.24, 'sawtooth', 0.12, 0.12); }
   function playWin() {
@@ -327,8 +331,32 @@
     potentialEl.textContent = 'Nå kan du få ' + pointsFor(current.start) + ' poeng';
   }
 
+  function setCursor(r, c) {
+    if (cells[cursor.r - 1] && cells[cursor.r - 1][cursor.c - 1]) cells[cursor.r - 1][cursor.c - 1].classList.remove('cursor');
+    cursor = { r: r, c: c };
+    cells[r - 1][c - 1].classList.add('cursor');
+  }
+
+  function moveCursor(dr, dc) {
+    var r = cursor.r;
+    var c = cursor.c;
+    for (;;) {
+      var nr = r + dr;
+      var nc = c + dc;
+      if (nr < 1 || nr > SIZE || nc < 1 || nc > SIZE) break;
+      r = nr;
+      c = nc;
+      if (!filled[r - 1][c - 1]) break;
+    }
+    if (r !== cursor.r || c !== cursor.c) {
+      setCursor(r, c);
+      playTick();
+    }
+  }
+
   function onCell(r, c, btn) {
     if (!playing || locked || filled[r - 1][c - 1]) return;
+    setCursor(r, c);
     if (mode === 'type') {
       if (selected && selected.r === r && selected.c === c) {
         btn.classList.remove('selected');
@@ -361,6 +389,7 @@
       answered++;
       scoreEl.textContent = score;
       progressEl.textContent = answered + '/100';
+      if (cursor.r === r && cursor.c === c) moveCursor(0, 1);
       if (answered === SIZE * SIZE) { endGame(); return; }
       newQuestion();
     } else {
@@ -395,9 +424,11 @@
       answered++;
       scoreEl.textContent = score;
       progressEl.textContent = answered + '/100';
+      if (cursor.r === selected.r && cursor.c === selected.c) moveCursor(0, 1);
       selected = null;
       current = null;
       answerInput.value = '';
+      answerInput.blur();
       if (answered === SIZE * SIZE) { endGame(); return; }
       questionEl.textContent = 'Velg en rute i tabellen 👆';
       potentialEl.textContent = '';
@@ -439,6 +470,8 @@
     timerEl.textContent = '0.0s';
     answerRow.classList.toggle('hidden', mode !== 'type');
     answerInput.value = '';
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    setCursor(1, 1);
     startScreen.classList.add('hidden');
     endScreen.classList.add('hidden');
     ac();
@@ -470,8 +503,28 @@
   document.getElementById('start-type-btn').addEventListener('click', function () { startGame('type'); });
   document.getElementById('restart-btn').addEventListener('click', function () { startGame(mode); });
   document.getElementById('answer-btn').addEventListener('click', submitAnswer);
-  answerInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') submitAnswer();
+  document.addEventListener('keydown', function (e) {
+    if (!playing) return;
+    var inputFocused = document.activeElement === answerInput;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (inputFocused) return;
+      e.preventDefault();
+      if (e.key === 'ArrowUp') moveCursor(-1, 0);
+      else if (e.key === 'ArrowDown') moveCursor(1, 0);
+      else if (e.key === 'ArrowLeft') moveCursor(0, -1);
+      else moveCursor(0, 1);
+      return;
+    }
+    if (e.key === 'Escape' && inputFocused) { answerInput.blur(); return; }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (inputFocused) { submitAnswer(); return; }
+      var ae = document.activeElement;
+      if (ae && ae.tagName === 'BUTTON') ae.blur();
+      var btn = cells[cursor.r - 1][cursor.c - 1];
+      onCell(cursor.r, cursor.c, btn);
+      if (mode === 'type' && selected) answerInput.focus();
+    }
   });
 
   buildBoard();
