@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gangetabell-spill</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    user-select: none;
+  }
+  h1 { font-size: 1.6rem; margin: 8px 0 4px; letter-spacing: 1px; }
+  .subtitle { color: #9fb3d1; font-size: 0.9rem; margin-bottom: 12px; }
+  .hud {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .hud .box {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    padding: 8px 16px;
+    text-align: center;
+    min-width: 96px;
+  }
+  .hud .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: #9fb3d1; }
+  .hud .value { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #score .value { color: #ffd166; }
+  #timer .value { color: #6ee7ff; }
+  #progress .value { color: #8ef0a4; }
+  #question-box {
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 14px;
+    padding: 10px 28px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+  #question { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #potential { font-size: 0.85rem; color: #ffd166; height: 1.2em; font-variant-numeric: tabular-nums; }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+    gap: 4px;
+    width: min(94vw, 560px);
+  }
+  .axis {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #9fb3d1;
+    font-size: clamp(0.6rem, 2.4vw, 0.95rem);
+  }
+  .cell {
+    aspect-ratio: 1;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    font-size: clamp(0.65rem, 2.8vw, 1.05rem);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    font-variant-numeric: tabular-nums;
+  }
+  .cell:hover:not(.filled) { background: rgba(110,231,255,0.35); transform: scale(1.06); }
+  .cell.filled { background: rgba(142,240,164,0.25); cursor: default; color: #8ef0a4; }
+  .cell.correct-flash { background: #2ecc71 !important; color: #fff; transform: scale(1.12); }
+  .cell.wrong-flash { background: #e74c3c !important; animation: shake 0.25s; }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 24, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    padding: 20px;
+  }
+  .overlay.hidden { display: none; }
+  .panel {
+    background: #1e2a4a;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 16px;
+    padding: 28px 32px;
+    text-align: center;
+    max-width: 420px;
+    width: 100%;
+  }
+  .panel h2 { font-size: 1.5rem; margin-bottom: 10px; }
+  .panel p { color: #c3d2ea; font-size: 0.95rem; line-height: 1.5; margin-bottom: 14px; }
+  .panel .big { font-size: 2rem; font-weight: 800; color: #ffd166; }
+  .panel .stat { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.95rem; }
+  .panel .stat span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+  button.start {
+    background: linear-gradient(135deg, #ffd166, #f4a261);
+    border: none;
+    color: #1a1a2e;
+    font-size: 1.1rem;
+    font-weight: 800;
+    padding: 12px 32px;
+    border-radius: 12px;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: transform 0.1s;
+  }
+  button.start:hover { transform: scale(1.05); }
+</style>
+</head>
+<body>
+  <h1>🧮 Gangetabell-spillet</h1>
+  <div class="subtitle">Fyll ut hele 10×10-tabellen — poeng gis kun etter hvor raskt du svarer!</div>
+
+  <div class="hud">
+    <div class="box" id="timer"><div class="label">Tid</div><div class="value">0.0s</div></div>
+    <div class="box" id="score"><div class="label">Poeng</div><div class="value">0</div></div>
+    <div class="box" id="progress"><div class="label">Ferdig</div><div class="value">0/100</div></div>
+  </div>
+
+  <div id="question-box">
+    <div id="question">–</div>
+    <div id="potential"></div>
+  </div>
+
+  <div id="board"></div>
+
+  <div class="overlay" id="start-screen">
+    <div class="panel">
+      <h2>🧮 Gangetabell-spillet</h2>
+      <p>Et tilfeldig gangestykke vises øverst, f.eks. <b>6 × 7 = ?</b>. Klikk riktig rute i tabellen (6×7 eller 7×6 gjelder begge).</p>
+      <p>Du får <b>maks 100 poeng</b> per riktig svar — og poengene synker med <b>10 poeng per sekund</b> (minimum 10). Jo raskere, jo mer poeng. Tiden løper hele tiden!</p>
+      <p>Fyll alle <b>100 rutene</b> så fort du klarer.</p>
+      <button class="start" id="start-btn">Start spill ▶</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="end-screen">
+    <div class="panel">
+      <h2>🎉 Ferdig!</h2>
+      <p class="big" id="final-score">0 poeng</p>
+      <div class="stat"><span>Total tid</span><span id="final-time">–</span></div>
+      <div class="stat"><span>Gjennomsnitt per svar</span><span id="final-avg">–</span></div>
+      <div class="stat"><span>Beste resultat</span><span id="final-best">–</span></div>
+      <button class="start" id="restart-btn">Spill igjen 🔁</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var SIZE = 10;
+  var board = document.getElementById('board');
+  var questionEl = document.getElementById('question');
+  var potentialEl = document.getElementById('potential');
+  var timerEl = document.querySelector('#timer .value');
+  var scoreEl = document.querySelector('#score .value');
+  var progressEl = document.querySelector('#progress .value');
+  var startScreen = document.getElementById('start-screen');
+  var endScreen = document.getElementById('end-screen');
+
+  var filled = [];
+  var cells = [];
+  var current = null;
+  var score = 0;
+  var answered = 0;
+  var playing = false;
+  var locked = false;
+  var gameStart = 0;
+  var interval = null;
+  var BEST_KEY = 'gangetabell_best_score';
+
+  function buildBoard() {
+    board.innerHTML = '';
+    filled = [];
+    cells = [];
+    for (var r = 0; r < SIZE; r++) { filled.push(new Array(SIZE).fill(false)); cells.push(new Array(SIZE).fill(null)); }
+    var corner = document.createElement('div');
+    corner.className = 'axis';
+    corner.textContent = '×';
+    board.appendChild(corner);
+    for (var c = 1; c <= SIZE; c++) {
+      var h = document.createElement('div');
+      h.className = 'axis';
+      h.textContent = c;
+      board.appendChild(h);
+    }
+    for (var r2 = 1; r2 <= SIZE; r2++) {
+      var rh = document.createElement('div');
+      rh.className = 'axis';
+      rh.textContent = r2;
+      board.appendChild(rh);
+      for (var c2 = 1; c2 <= SIZE; c2++) {
+        (function (r, c) {
+          var btn = document.createElement('button');
+          btn.className = 'cell';
+          btn.dataset.r = r;
+          btn.dataset.c = c;
+          btn.addEventListener('click', function () { onCell(r, c, btn); });
+          cells[r - 1][c - 1] = btn;
+          board.appendChild(btn);
+        })(r2, c2);
+      }
+    }
+  }
+
+  function pointsFor(start) {
+    var elapsed = (performance.now() - start) / 1000;
+    return Math.max(10, Math.round(100 - elapsed * 10));
+  }
+
+  function newQuestion() {
+    var empty = [];
+    for (var r = 0; r < SIZE; r++)
+      for (var c = 0; c < SIZE; c++)
+        if (!filled[r][c]) empty.push([r + 1, c + 1]);
+    var pick = empty[Math.floor(Math.random() * empty.length)];
+    current = { a: pick[0], b: pick[1], start: performance.now() };
+    questionEl.textContent = current.a + ' × ' + current.b + ' = ?';
+    updatePotential();
+  }
+
+  function updatePotential() {
+    if (!current) return;
+    potentialEl.textContent = 'Nå kan du få ' + pointsFor(current.start) + ' poeng';
+  }
+
+  function onCell(r, c, btn) {
+    if (!playing || locked || filled[r - 1][c - 1]) return;
+    var isCorrect = (r === current.a && c === current.b) || (r === current.b && c === current.a);
+    if (isCorrect) {
+      var pts = pointsFor(current.start);
+      score += pts;
+      filled[r - 1][c - 1] = true;
+      btn.textContent = r * c;
+      btn.classList.add('filled', 'correct-flash');
+      setTimeout(function () { btn.classList.remove('correct-flash'); }, 350);
+      answered++;
+      scoreEl.textContent = score;
+      progressEl.textContent = answered + '/100';
+      if (answered === SIZE * SIZE) { endGame(); return; }
+      newQuestion();
+    } else {
+      locked = true;
+      btn.classList.add('wrong-flash');
+      setTimeout(function () {
+        btn.classList.remove('wrong-flash');
+        locked = false;
+      }, 300);
+    }
+  }
+
+  function fmtTime(ms) {
+    var s = ms / 1000;
+    return s.toFixed(1) + 's';
+  }
+
+  function tick() {
+    if (!playing) return;
+    timerEl.textContent = fmtTime(performance.now() - gameStart);
+    updatePotential();
+  }
+
+  function startGame() {
+    buildBoard();
+    score = 0;
+    answered = 0;
+    current = null;
+    locked = false;
+    playing = true;
+    scoreEl.textContent = '0';
+    progressEl.textContent = '0/100';
+    timerEl.textContent = '0.0s';
+    startScreen.classList.add('hidden');
+    endScreen.classList.add('hidden');
+    gameStart = performance.now();
+    newQuestion();
+    clearInterval(interval);
+    interval = setInterval(tick, 50);
+  }
+
+  function endGame() {
+    playing = false;
+    clearInterval(interval);
+    var totalMs = performance.now() - gameStart;
+    timerEl.textContent = fmtTime(totalMs);
+    var best = Number(localStorage.getItem(BEST_KEY) || 0);
+    if (score > best) {
+      best = score;
+      localStorage.setItem(BEST_KEY, String(best));
+    }
+    document.getElementById('final-score').textContent = score + ' poeng';
+    document.getElementById('final-time').textContent = fmtTime(totalMs);
+    document.getElementById('final-avg').textContent = fmtTime(totalMs / 100);
+    document.getElementById('final-best').textContent = best + ' poeng';
+    endScreen.classList.remove('hidden');
+  }
+
+  document.getElementById('start-btn').addEventListener('click', startGame);
+  document.getElementById('restart-btn').addEventListener('click', startGame);
+
+  buildBoard();
+})();
+</script>
+</body>
+</html>
